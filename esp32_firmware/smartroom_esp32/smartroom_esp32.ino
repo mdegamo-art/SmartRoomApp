@@ -18,26 +18,25 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <DHT.h>
-#include <ArduinoJson.h>
 
 // WiFi Configuration
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "Redmi A3";
+const char* password = "12345678";
 
 // Server Configuration
-const char* serverUrl = "http://192.168.1.13:8000/api";
+const char* serverUrl = "http://10.182.231.239:8000/api";
 
 // Sensor Pin Definitions
 #define DHT_PIN 4
+#define DHT_TYPE DHT11
 #define LDR_PIN 34
+
+// DHT Sensor Object
+DHT dht(DHT_PIN, DHT_TYPE);
 
 // Actuator Pin Definitions
 #define LED_PIN 2
 #define BUZZER_PIN 15
-
-// Sensor Configuration
-#define DHT_TYPE DHT11
-DHT dht(DHT_PIN, DHT_TYPE);
 
 // Timing Variables
 unsigned long lastSensorRead = 0;
@@ -49,11 +48,21 @@ const unsigned long actuatorInterval = 1500; // Poll actuators every 1.5 seconds
 bool previousLedState = false;
 bool previousBuzzerState = false;
 
+// DHT11 Variables
+float temperature = 0;
+float humidity = 0;
+
 void setup() {
   Serial.begin(115200);
-  
+  delay(2000); // Wait for serial to stabilize
+
+  Serial.println("Initializing DHT11...");
+
+  // Initialize DHT sensor
+  dht.begin();
+  delay(2000); // Give DHT11 time to stabilize after power-up
+
   // Initialize pins
-  pinMode(DHT_PIN, INPUT);
   pinMode(LDR_PIN, INPUT);
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
@@ -61,9 +70,6 @@ void setup() {
   // Initialize actuators to OFF
   digitalWrite(LED_PIN, LOW);
   digitalWrite(BUZZER_PIN, LOW);
-  
-  // Initialize DHT sensor
-  dht.begin();
   
   // Connect to WiFi
   connectToWiFi();
@@ -83,6 +89,7 @@ void loop() {
   // Send sensor data every 5 seconds
   if (currentTime - lastSensorRead >= sensorInterval) {
     lastSensorRead = currentTime;
+    readDHT11();
     sendSensorData();
   }
   
@@ -110,29 +117,44 @@ void connectToWiFi() {
   Serial.println(WiFi.localIP());
 }
 
+// Read DHT11 using library
+void readDHT11() {
+  // DHT11 needs at least 1 second between readings
+  delay(1000);
+
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+
+  // Debug raw values
+  Serial.print("Raw T: "); Serial.println(t);
+  Serial.print("Raw H: "); Serial.println(h);
+
+  if (isnan(h) || isnan(t)) {
+    Serial.println("DHT11 read failed! Check wiring.");
+    Serial.println("→ Make sure VCC is on VIN (5V), not 3V3");
+    Serial.println("→ Make sure DATA is on GPIO 4");
+    return;
+  }
+
+  humidity = h;
+  temperature = t;
+
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.print(" °C | Humidity: ");
+  Serial.print(humidity);
+  Serial.println(" %");
+}
+
 void sendSensorData() {
-  // Read DHT11 (Temperature & Humidity)
-  float temperature = dht.readTemperature();
-  float humidity = dht.readHumidity();
-  
   // Read LDR (Light Level)
   int ldrValue = analogRead(LDR_PIN);
   int lightLevel = map(ldrValue, 0, 4095, 0, 100); // Convert to percentage (integer)
   
-  // Check for sensor read errors
-  if (isnan(temperature) || isnan(humidity)) {
-    Serial.println("Failed to read from DHT sensor!");
-    return;
-  }
-  
-  // Create JSON payload
-  StaticJsonDocument<256> doc;
-  doc["temperature"] = temperature;
-  doc["humidity"] = humidity;
-  doc["light_level"] = lightLevel;
-  
-  String jsonString;
-  serializeJson(doc, jsonString);
+  // Create JSON payload manually
+  String jsonString = "{\"temperature\":" + String(temperature) + 
+                      ",\"humidity\":" + String(humidity) + 
+                      ",\"light_level\":" + String(lightLevel) + "}";
   
   // Send to server
   HTTPClient http;
@@ -165,41 +187,53 @@ void pollActuatorStates() {
   if (httpResponseCode == 200) {
     String response = http.getString();
     
-    // Parse JSON response
-    StaticJsonDocument<256> doc;
-    DeserializationError error = deserializeJson(doc, response);
+    // Parse JSON manually
+    bool ledState = false;
+    bool buzzerState = false;
     
-    if (!error) {
-      bool ledState = doc["led_state"];
-      bool buzzerState = doc["buzzer_state"];
-      
-      // Update LED if state changed
-      if (ledState != previousLedState) {
-        digitalWrite(LED_PIN, ledState ? HIGH : LOW);
-        previousLedState = ledState;
-        Serial.print("LED state changed to: ");
-        Serial.println(ledState ? "ON" : "OFF");
-      }
-      
-      // Update buzzer if state changed
-      if (buzzerState != previousBuzzerState) {
-        digitalWrite(BUZZER_PIN, buzzerState ? HIGH : LOW);
-        previousBuzzerState = buzzerState;
-        Serial.print("Buzzer state changed to: ");
-        Serial.println(buzzerState ? "ON" : "OFF");
-      }
-      
-      // Log current states
-      Serial.println("Actuator states updated");
-      Serial.print("LED: ");
-      Serial.println(ledState ? "ON" : "OFF");
-      Serial.print("Buzzer: ");
-      Serial.println(buzzerState ? "ON" : "OFF");
-      
-    } else {
-      Serial.print("JSON parsing error: ");
-      Serial.println(error.c_str());
+    // Parse led
+    int ledIndex = response.indexOf("\"led\":");
+    if (ledIndex != -1) {
+      int valueStart = ledIndex + 6;
+      int valueEnd = response.indexOf(",", valueStart);
+      if (valueEnd == -1) valueEnd = response.indexOf("}", valueStart);
+      String ledValue = response.substring(valueStart, valueEnd);
+      ledState = (ledValue == "true" || ledValue == "1");
     }
+    
+    // Parse buzzer
+    int buzzerIndex = response.indexOf("\"buzzer\":");
+    if (buzzerIndex != -1) {
+      int valueStart = buzzerIndex + 9;
+      int valueEnd = response.indexOf(",", valueStart);
+      if (valueEnd == -1) valueEnd = response.indexOf("}", valueStart);
+      String buzzerValue = response.substring(valueStart, valueEnd);
+      buzzerState = (buzzerValue == "true" || buzzerValue == "1");
+    }
+    
+    // Update LED if state changed
+    if (ledState != previousLedState) {
+      digitalWrite(LED_PIN, ledState ? HIGH : LOW);
+      previousLedState = ledState;
+      Serial.print("LED state changed to: ");
+      Serial.println(ledState ? "ON" : "OFF");
+    }
+    
+    // Update buzzer if state changed
+    if (buzzerState != previousBuzzerState) {
+      digitalWrite(BUZZER_PIN, buzzerState ? HIGH : LOW);
+      previousBuzzerState = buzzerState;
+      Serial.print("Buzzer state changed to: ");
+      Serial.println(buzzerState ? "ON" : "OFF");
+    }
+    
+    // Log current states
+    Serial.println("Actuator states updated");
+    Serial.print("LED: ");
+    Serial.println(ledState ? "ON" : "OFF");
+    Serial.print("Buzzer: ");
+    Serial.println(buzzerState ? "ON" : "OFF");
+    
   } else {
     Serial.print("Error polling actuator states: ");
     Serial.println(httpResponseCode);
