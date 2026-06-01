@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ActuatorController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -25,13 +26,19 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard',           [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/logs',      [DashboardController::class, 'logs'])->name('logs');
     Route::get('/dashboard/actuators', [DashboardController::class, 'actuators'])->name('actuators');
-    Route::get('/dashboard/settings',  [DashboardController::class, 'settings'])->name('settings');
 
-    // User management
-    Route::get('/users',              [UserController::class, 'index'])->name('users');
-    Route::post('/users',             [UserController::class, 'store'])->name('users.store');
-    Route::put('/users/{user}',       [UserController::class, 'update'])->name('users.update');
-    Route::delete('/users/{user}',    [UserController::class, 'destroy'])->name('users.destroy');
+    // User management (admin only)
+    Route::middleware('admin')->group(function () {
+        Route::get('/devices',            [DeviceController::class, 'index'])->name('devices');
+        Route::post('/devices',           [DeviceController::class, 'store'])->name('devices.store');
+        Route::delete('/devices/{device}', [DeviceController::class, 'destroy'])->name('devices.destroy');
+
+        Route::get('/users',              [UserController::class, 'index'])->name('users');
+        Route::post('/users',             [UserController::class, 'store'])->name('users.store');
+        Route::put('/users/{user}',       [UserController::class, 'update'])->name('users.update');
+        Route::patch('/users/{user}/device', [UserController::class, 'updateDevice'])->name('users.update.device');
+        Route::delete('/users/{user}',    [UserController::class, 'destroy'])->name('users.destroy');
+    });
 
     // Actuator toggle from web dashboard
     Route::post('/dashboard/actuator', [ActuatorController::class, 'webUpdate'])->name('actuator.web.update');

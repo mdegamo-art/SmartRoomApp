@@ -6,23 +6,23 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
-public function up(): void
-{
-    Schema::table('telemetry_logs', function (Blueprint $table) {
-        $table->float('temperature')->nullable();
-        $table->float('humidity')->nullable();
-        $table->integer('light_level')->nullable();
-        $table->boolean('motion_detected')->default(false);
-        $table->timestamp('logged_at')->nullable();
+    public function up(): void
+    {
+        if (Schema::hasTable('telemetry_logs')) {
+            return;
+        }
 
-    });
-}
-    /**
-     * Reverse the migrations.
-     */
+        Schema::create('telemetry_logs', function (Blueprint $table) {
+            $table->id();
+            $table->string('device_id')->nullable();
+            $table->float('temperature')->nullable();
+            $table->float('humidity')->nullable();
+            $table->integer('light_level')->nullable();
+            $table->boolean('motion_detected')->default(false);
+            $table->timestamps();
+        });
+    }
+
     public function down(): void
     {
         Schema::dropIfExists('telemetry_logs');

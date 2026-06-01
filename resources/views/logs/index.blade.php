@@ -51,6 +51,9 @@
         <thead>
             <tr>
                 <th style="padding:12px 16px;">#</th>
+                @if(auth()->user()->is_admin)
+                <th style="padding:12px 16px;">Device</th>
+                @endif
                 <th style="padding:12px 16px;">Timestamp</th>
                 <th style="padding:12px 16px;">Temperature</th>
                 <th style="padding:12px 16px;">Humidity</th>
@@ -62,8 +65,12 @@
             @forelse($logs as $log)
                 <tr>
                     <td style="padding:11px 16px;color:var(--text-3);">{{ $log->id }}</td>
+                    @if(auth()->user()->is_admin)
+                    <td style="padding:11px 16px;font-family:monospace;font-size:12px;">{{ $log->device_id ?? '—' }}</td>
+                    @endif
                     <td style="padding:11px 16px;font-family:monospace;font-size:12px;color:var(--text-2);">
-                        {{ $log->created_at->format('Y-m-d h:i:s A') }}
+                        <span data-timestamp="{{ $log->created_at->timestamp }}" data-live-mode="absolute">{{ $log->created_at->format('Y-m-d h:i:s A') }}</span>
+                        <span style="display:block;font-size:11px;color:var(--text-3);"><span data-timestamp="{{ $log->created_at->timestamp }}" data-live-mode="ago">—</span></span>
                     </td>
                     <td style="padding:11px 16px;font-weight:600;">
                         {{ number_format($log->temperature, 1) }} °C
@@ -82,7 +89,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6" style="text-align:center;padding:32px;color:var(--text-3);">
+                    <td colspan="{{ auth()->user()->is_admin ? 7 : 6 }}" style="text-align:center;padding:32px;color:var(--text-3);">
                         No records found.
                     </td>
                 </tr>

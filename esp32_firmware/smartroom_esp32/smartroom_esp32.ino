@@ -1,20 +1,3 @@
-/*
- * SmartRoom IoT ESP32 Firmware
- * 
- * Hardware Requirements:
- * - ESP32 Development Board
- * - DHT11 Temperature & Humidity Sensor
- * - LDR Light Sensor Module
- * - LED Module (for room lighting)
- * - Active Buzzer Module (for alerts)
- * 
- * Pin Configuration:
- * - DHT11: GPIO 4
- * - LDR: GPIO 34 (ADC1_CH6)
- * - LED: GPIO 2
- * - Buzzer: GPIO 15
- */
-
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <DHT.h>
@@ -25,6 +8,9 @@ const char* password = "12345678";
 
 // Server Configuration
 const char* serverUrl = "http://10.182.231.239:8000/api";
+
+// Device Configuration
+const char* deviceId = "SMARTROOM-001"; // Unique device ID for this ESP32
 
 // Sensor Pin Definitions
 #define DHT_PIN 4
@@ -51,6 +37,15 @@ bool previousBuzzerState = false;
 // DHT11 Variables
 float temperature = 0;
 float humidity = 0;
+int lightLevel = 0;
+
+// Automation thresholds
+const float TEMP_THRESHOLD = 33.0;  // Temperature threshold for buzzer
+const int LIGHT_THRESHOLD_LOW = 40; // Light level threshold for LED ON (almost dark)
+const int LIGHT_THRESHOLD_HIGH = 60; // Light level threshold for LED OFF
+
+// Buzzer settings for piezoelectric buzzer
+const int BUZZER_FREQUENCY = 2000; // 2000Hz frequency for piezoelectric buzzer
 
 void setup() {
   Serial.begin(115200);
@@ -91,6 +86,7 @@ void loop() {
     lastSensorRead = currentTime;
     readDHT11();
     sendSensorData();
+    runLocalAutomation(); // Run local automation after reading sensors
   }
   
   // Poll actuator states every 1.5 seconds
@@ -149,10 +145,11 @@ void readDHT11() {
 void sendSensorData() {
   // Read LDR (Light Level)
   int ldrValue = analogRead(LDR_PIN);
-  int lightLevel = map(ldrValue, 0, 4095, 0, 100); // Convert to percentage (integer)
+  lightLevel = map(ldrValue, 0, 4095, 100, 0); // Convert to percentage (inverted for correct wiring)
   
-  // Create JSON payload manually
-  String jsonString = "{\"temperature\":" + String(temperature) + 
+  // Create JSON payload manually with device ID
+  String jsonString = "{\"device_id\":\"" + String(deviceId) + "\"," +
+                      "\"temperature\":" + String(temperature) + 
                       ",\"humidity\":" + String(humidity) + 
                       ",\"light_level\":" + String(lightLevel) + "}";
   
@@ -177,9 +174,40 @@ void sendSensorData() {
   http.end();
 }
 
+// Local automation - works independently of server
+void runLocalAutomation() {
+  // LED automation based on light level
+  if (lightLevel < LIGHT_THRESHOLD_LOW) {
+    // Dark room - turn on LED
+    if (digitalRead(LED_PIN) == LOW) {
+      digitalWrite(LED_PIN, HIGH);
+      Serial.println("Local automation: LED ON (dark room)");
+    }
+  } else if (lightLevel > LIGHT_THRESHOLD_HIGH) {
+    // Bright room - turn off LED
+    if (digitalRead(LED_PIN) == HIGH) {
+      digitalWrite(LED_PIN, LOW);
+      Serial.println("Local automation: LED OFF (bright room)");
+    }
+  }
+
+  // Buzzer automation based on temperature (>33°C ON, <33°C OFF)
+  if (temperature > TEMP_THRESHOLD && temperature > 0) {
+    if (digitalRead(BUZZER_PIN) == LOW) {
+      tone(BUZZER_PIN, BUZZER_FREQUENCY);
+      Serial.println("Local automation: Buzzer ON (temperature > 33°C)");
+    }
+  } else if (temperature < TEMP_THRESHOLD && temperature > 0) {
+    if (digitalRead(BUZZER_PIN) == HIGH) {
+      noTone(BUZZER_PIN);
+      Serial.println("Local automation: Buzzer OFF (temperature < 33°C)");
+    }
+  }
+}
+
 void pollActuatorStates() {
   HTTPClient http;
-  String url = String(serverUrl) + "/actuator-status";
+  String url = String(serverUrl) + "/actuator-status?device_id=" + String(deviceId);
   http.begin(url);
   
   int httpResponseCode = http.GET();
@@ -221,7 +249,11 @@ void pollActuatorStates() {
     
     // Update buzzer if state changed
     if (buzzerState != previousBuzzerState) {
-      digitalWrite(BUZZER_PIN, buzzerState ? HIGH : LOW);
+      if (buzzerState) {
+        tone(BUZZER_PIN, BUZZER_FREQUENCY);
+      } else {
+        noTone(BUZZER_PIN);
+      }
       previousBuzzerState = buzzerState;
       Serial.print("Buzzer state changed to: ");
       Serial.println(buzzerState ? "ON" : "OFF");

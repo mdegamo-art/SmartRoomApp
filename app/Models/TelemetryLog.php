@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class TelemetryLog extends Model
 {
     protected $fillable = [
+        'device_id',
         'temperature',
         'humidity',
         'light_level',

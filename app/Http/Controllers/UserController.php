@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Device;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -9,20 +10,17 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
-    /**
-     * Display a listing of users.
-     */
     public function index()
     {
-        $users = User::all();
+        $users = User::orderBy('name')->get();
+
         return view('users.index', compact('users'));
     }
 
-    /**
-     * Store a newly created user.
-     */
     public function store(Request $request)
     {
+        $isAdmin = $request->boolean('is_admin');
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
@@ -31,16 +29,18 @@ class UserController extends Controller
         ]);
 
         $validated['password'] = Hash::make($validated['password']);
-        $validated['is_admin'] = $request->has('is_admin');
+        $validated['is_admin'] = $isAdmin;
+        $validated['device_id'] = null;
 
         User::create($validated);
 
-        return redirect()->route('users')->with('success', 'User created successfully.');
+        $message = $isAdmin
+            ? 'Admin user created successfully.'
+            : 'Mobile user created. They will link their Device ID in the app after login.';
+
+        return redirect()->route('users')->with('success', $message);
     }
 
-    /**
-     * Update the specified user.
-     */
     public function update(Request $request, User $user)
     {
         $validated = $request->validate([
@@ -53,7 +53,7 @@ class UserController extends Controller
             $validated['password'] = Hash::make($request->password);
         }
 
-        $validated['is_admin'] = $request->has('is_admin');
+        $validated['is_admin'] = $request->boolean('is_admin');
 
         $user->update($validated);
 
@@ -61,8 +61,39 @@ class UserController extends Controller
     }
 
     /**
-     * Remove the specified user.
+     * Admin override: force-assign or clear a user's device link (support only).
      */
+    public function updateDevice(Request $request, User $user)
+    {
+        $validated = $request->validate([
+            'device_id' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique('users', 'device_id')->ignore($user->id),
+            ],
+        ]);
+
+        if ($user->is_admin) {
+            $validated['device_id'] = null;
+            $user->update($validated);
+
+            return redirect()->route('users')->with('success', 'Admin users do not use device links.');
+        }
+
+        if (!empty($validated['device_id'])) {
+            $deviceId = Device::normalizeId($validated['device_id']);
+            if (!Device::isLinkable($deviceId)) {
+                return redirect()->route('users')->with('error', 'Device ID must be registered under Devices first, or ESP32 must have reported data.');
+            }
+            $validated['device_id'] = $deviceId;
+        }
+
+        $user->update($validated);
+
+        return redirect()->route('users')->with('success', 'Device link updated (admin override).');
+    }
+
     public function destroy(User $user)
     {
         if ($user->id === auth()->id()) {
@@ -74,14 +105,13 @@ class UserController extends Controller
         return redirect()->route('users')->with('success', 'User deleted successfully.');
     }
 
-    /**
-     * Create user via API (for admin use)
-     */
     public function apiStore(Request $request)
     {
         if (!$request->user()->is_admin) {
             return response()->json(['message' => 'Unauthorized. Admin access required.'], 403);
         }
+
+        $isAdmin = $request->boolean('is_admin');
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -91,7 +121,8 @@ class UserController extends Controller
         ]);
 
         $validated['password'] = Hash::make($validated['password']);
-        $validated['is_admin'] = $request->has('is_admin');
+        $validated['is_admin'] = $isAdmin;
+        $validated['device_id'] = null;
 
         $user = User::create($validated);
 
@@ -101,17 +132,12 @@ class UserController extends Controller
         ], 201);
     }
 
-    /**
-     * List users via API (for admin use)
-     */
     public function apiIndex(Request $request)
     {
         if (!$request->user()->is_admin) {
             return response()->json(['message' => 'Unauthorized. Admin access required.'], 403);
         }
 
-        $users = User::all();
-
-        return response()->json($users);
+        return response()->json(User::orderBy('name')->get());
     }
 }

@@ -2,7 +2,7 @@
 
 @section('title', 'Actuator Controls')
 @section('page-title', 'Actuator Controls')
-@section('page-sub', 'LED and Buzzer states · synced with ESP32 via GET /api/actuator-status')
+@section('page-sub', ($activeDeviceId ?? 'No room') . ' · per-device LED/Buzzer · ESP32 polls GET /api/actuator-status?device_id=...')
 
 @section('content')
 
@@ -28,6 +28,7 @@
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
                 <form method="POST" action="{{ route('actuator.web.update') }}" class="toggle-form">
                     @csrf
+                    @if($activeDeviceId)<input type="hidden" name="device_id" value="{{ $activeDeviceId }}">@endif
                     <input type="hidden" name="actuator" value="led">
                     <input type="hidden" name="state" value="{{ ($states['led']->state ?? 0) ? 0 : 1 }}">
                     <button type="submit" class="toggle-btn {{ ($states['led']->state ?? 0) ? 'on' : 'off' }}" title="Toggle LED"></button>
@@ -56,6 +57,7 @@
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
                 <form method="POST" action="{{ route('actuator.web.update') }}" class="toggle-form">
                     @csrf
+                    @if($activeDeviceId)<input type="hidden" name="device_id" value="{{ $activeDeviceId }}">@endif
                     <input type="hidden" name="actuator" value="buzzer">
                     <input type="hidden" name="state" value="{{ ($states['buzzer']->state ?? 0) ? 0 : 1 }}">
                     <button type="submit" class="toggle-btn {{ ($states['buzzer']->state ?? 0) ? 'on' : 'off' }}" title="Toggle Buzzer"></button>
@@ -76,6 +78,7 @@
         <thead>
             <tr>
                 <th>ID</th>
+                <th>device_id</th>
                 <th>actuator_name</th>
                 <th>state</th>
                 <th>updated_at</th>
@@ -85,13 +88,17 @@
             @foreach($states as $name => $row)
                 <tr>
                     <td style="color:var(--text-3);">{{ $row->id }}</td>
+                    <td style="font-family:monospace;font-size:12px;">{{ $row->device_id }}</td>
                     <td><code style="font-family:monospace;background:var(--bg);padding:2px 7px;border-radius:5px;">{{ $name }}</code></td>
                     <td>
                         <span class="badge {{ $row->state ? 'badge-ok' : 'badge-alert' }}">
                             {{ $row->state }} ({{ $row->state ? 'ON' : 'OFF' }})
                         </span>
                     </td>
-                    <td style="font-family:monospace;font-size:12px;color:var(--text-2);">{{ $row->updated_at->format('Y-m-d H:i:s') }}</td>
+                    <td style="font-family:monospace;font-size:12px;color:var(--text-2);">
+                        <span data-timestamp="{{ $row->updated_at->timestamp }}" data-live-mode="absolute">{{ $row->updated_at->format('Y-m-d H:i:s') }}</span>
+                        <span style="display:block;font-size:11px;color:var(--text-3);"><span data-timestamp="{{ $row->updated_at->timestamp }}" data-live-mode="ago">—</span></span>
+                    </td>
                 </tr>
             @endforeach
         </tbody>
@@ -105,9 +112,9 @@
         <div>
             <div style="font-size:14px;font-weight:700;color:var(--amber-text);">Smart Automation Rule</div>
             <div style="font-size:13px;color:#633806;margin-top:4px;line-height:1.6;">
-                If <code style="font-family:monospace;background:rgba(0,0,0,0.08);padding:1px 5px;border-radius:4px;">temperature &gt; 35°C</code>
-                → Laravel automatically sets buzzer state to <strong>ON</strong> when it receives sensor data via <code style="font-family:monospace;font-size:12px;">POST /api/sensor-data</code>.
-                The ESP32 then picks this up on its next poll and activates the buzzer physically.
+                If <code style="font-family:monospace;background:rgba(0,0,0,0.08);padding:1px 5px;border-radius:4px;">temperature &gt; 33°C</code>
+                → buzzer <strong>ON</strong>; if <code style="font-family:monospace;background:rgba(0,0,0,0.08);padding:1px 5px;border-radius:4px;">temperature &lt; 33°C</code>
+                → buzzer <strong>OFF</strong>. Laravel updates state on <code style="font-family:monospace;font-size:12px;">POST /api/sensor-data</code>; the ESP32 also applies the same rule locally and via actuator polling.
             </div>
         </div>
     </div>

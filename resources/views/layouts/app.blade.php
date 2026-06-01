@@ -301,6 +301,21 @@
             text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 8px;
         }
 
+        .live-clock-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            background: var(--surface);
+            font-family: ui-monospace, monospace;
+            font-size: 12px;
+            color: var(--text-1);
+            white-space: nowrap;
+        }
+        .live-clock-pill i { font-size: 14px; color: var(--text-2); }
+
         /* Responsive */
         @media (max-width: 900px) {
             .metrics-grid { grid-template-columns: 1fr 1fr; }
@@ -333,12 +348,14 @@
             <a href="{{ route('actuators') }}"  class="nav-item {{ request()->routeIs('actuators') ? 'active' : '' }}">
                 <i class="ti ti-toggle-right"></i> Actuators
             </a>
+            @if(auth()->user()->is_admin)
+            <a href="{{ route('devices') }}"    class="nav-item {{ request()->routeIs('devices*') ? 'active' : '' }}">
+                <i class="ti ti-cpu"></i> Devices
+            </a>
             <a href="{{ route('users') }}"      class="nav-item {{ request()->routeIs('users') ? 'active' : '' }}">
                 <i class="ti ti-users"></i> Users
             </a>
-            <a href="{{ route('settings') }}"   class="nav-item {{ request()->routeIs('settings') ? 'active' : '' }}">
-                <i class="ti ti-settings"></i> Settings
-            </a>
+            @endif
         </nav>
 
         <div class="sidebar-footer">
@@ -346,7 +363,13 @@
                 <div class="avatar">{{ strtoupper(substr(auth()->user()->name ?? 'A', 0, 2)) }}</div>
                 <div>
                     <div class="user-name">{{ auth()->user()->name ?? 'Admin' }}</div>
-                    <div class="user-role">Administrator</div>
+                    <div class="user-role">
+                        @if(auth()->user()->is_admin)
+                            Administrator
+                        @else
+                            {{ auth()->user()->device_id ?? 'Mobile user' }}
+                        @endif
+                    </div>
                 </div>
             </div>
             <form method="POST" action="{{ route('logout') }}" style="margin-top:4px;">
@@ -368,9 +391,34 @@
                 <div class="topbar-sub">@yield('page-sub', 'Smart Room Monitoring and Control System')</div>
             </div>
             <div class="topbar-right">
+                <div class="live-clock-pill" title="Live time ({{ config('app.timezone') }})">
+                    <i class="ti ti-clock"></i>
+                    <span data-live-clock-short>--:--:--</span>
+                </div>
+                @if(auth()->user()->is_admin && !empty($monitorDeviceIds))
+                <form method="GET" action="{{ url()->current() }}" style="display:flex;align-items:center;gap:8px;">
+                    @foreach(request()->except('device_id') as $key => $value)
+                        @if(is_array($value))
+                            @foreach($value as $v)
+                                <input type="hidden" name="{{ $key }}[]" value="{{ $v }}">
+                            @endforeach
+                        @else
+                            <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                        @endif
+                    @endforeach
+                    <label style="font-size:12px;color:var(--text-2);white-space:nowrap;">Monitor room</label>
+                    <select name="device_id" onchange="this.form.submit()" style="padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);font-size:13px;color:var(--text-1);">
+                        @foreach($monitorDeviceIds as $roomId)
+                            <option value="{{ $roomId }}" @selected($monitorDeviceId === $roomId)>{{ $roomId }}</option>
+                        @endforeach
+                    </select>
+                </form>
+                @elseif(!auth()->user()->is_admin && auth()->user()->device_id)
+                <span style="font-size:12px;font-family:monospace;color:var(--text-2);padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);">{{ auth()->user()->device_id }}</span>
+                @endif
                 <div class="status-pill">
                     <div class="status-dot"></div>
-                    <span id="device-status-text">Device Online</span>
+                    <span id="device-status-text">{{ $monitorDeviceId ?? auth()->user()->device_id ?? 'No device' }}</span>
                 </div>
                 <a href="{{ route('dashboard') }}" class="icon-btn" title="Refresh">
                     <i class="ti ti-refresh"></i>
@@ -398,6 +446,8 @@
 
 </div>
 
+<script>window.SMARTROOM_TIMEZONE = @json(config('app.timezone'));</script>
+<script src="{{ asset('js/smartroom-time.js') }}?v=1"></script>
 @stack('scripts')
 </body>
 </html>

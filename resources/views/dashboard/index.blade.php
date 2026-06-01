@@ -2,9 +2,18 @@
 
 @section('title', 'Dashboard')
 @section('page-title', 'Dashboard')
-@section('page-sub', 'Last updated: {{ now()->format("h:i:s A") }} · ESP32-ROOM-01')
+@section('page-sub')
+    Live <span data-live-clock-short>--:--:--</span>{{ $activeDeviceId ? ' · ' . $activeDeviceId : ' · Select a room' }}@if($latest) · Last reading <span data-timestamp="{{ $latest->created_at->timestamp }}" data-live-mode="ago">{{ $latest->created_at->diffForHumans() }}</span>@endif
+@endsection
 
 @section('content')
+
+@if(auth()->user()->is_admin && empty($activeDeviceId))
+<div class="alert-bar error" style="margin-bottom:16px;">
+    <i class="ti ti-alert-circle"></i>
+    No rooms yet. Register device IDs under <strong>Devices</strong>, or wait for ESP32 telemetry.
+</div>
+@endif
 
 {{-- ── METRICS ── --}}
 <div class="metrics-grid">
@@ -67,7 +76,7 @@
         </div>
         <div class="metric-label">Device Status</div>
         <div class="metric-value" style="font-size:20px;color:var(--green-text);">Online</div>
-        <div class="metric-sub">ESP32-ROOM-01 · polling</div>
+        <div class="metric-sub">{{ $activeDeviceId ?? 'No room selected' }} · polling</div>
     </div>
 
 </div>
@@ -105,6 +114,7 @@
                 </div>
                 <form method="POST" action="{{ route('actuator.web.update') }}" class="toggle-form">
                     @csrf
+                    @if($activeDeviceId)<input type="hidden" name="device_id" value="{{ $activeDeviceId }}">@endif
                     <input type="hidden" name="actuator" value="led">
                     <input type="hidden" name="state" value="{{ $ledState ? 0 : 1 }}">
                     <button type="submit" class="toggle-btn {{ $ledState ? 'on' : 'off' }}" title="Toggle LED"></button>
@@ -122,6 +132,7 @@
                 </div>
                 <form method="POST" action="{{ route('actuator.web.update') }}" class="toggle-form">
                     @csrf
+                    @if($activeDeviceId)<input type="hidden" name="device_id" value="{{ $activeDeviceId }}">@endif
                     <input type="hidden" name="actuator" value="buzzer">
                     <input type="hidden" name="state" value="{{ $buzzerState ? 0 : 1 }}">
                     <button type="submit" class="toggle-btn {{ $buzzerState ? 'on' : 'off' }}" title="Toggle Buzzer"></button>
@@ -132,7 +143,7 @@
         <div class="panel">
             <div class="panel-title">Device Info</div>
             <div class="device-grid">
-                <div class="device-item"><div class="dk">Device ID</div><div class="dv">ESP32-ROOM-01</div></div>
+                <div class="device-item"><div class="dk">Device ID</div><div class="dv">{{ $activeDeviceId ?? '—' }}</div></div>
                 <div class="device-item"><div class="dk">Poll interval</div><div class="dv">1–2 sec</div></div>
                 <div class="device-item"><div class="dk">Sensor POST</div><div class="dv" style="font-size:11px;font-family:monospace;">/api/sensor-data</div></div>
                 <div class="device-item"><div class="dk">Actuator GET</div><div class="dv" style="font-size:11px;font-family:monospace;">/api/actuator-status</div></div>
@@ -162,7 +173,8 @@
             @forelse($recentLogs as $log)
                 <tr>
                     <td style="color:var(--text-2);font-family:monospace;font-size:12px;">
-                        {{ $log->created_at->format('h:i:s A') }}
+                        <span data-timestamp="{{ $log->created_at->timestamp }}" data-live-mode="absolute" title="{{ $log->created_at->format('Y-m-d H:i:s') }}">{{ $log->created_at->format('h:i:s A') }}</span>
+                        <span style="color:var(--text-3);font-size:11px;"> (<span data-timestamp="{{ $log->created_at->timestamp }}" data-live-mode="ago">—</span>)</span>
                     </td>
                     <td>{{ number_format($log->temperature, 1) }} °C</td>
                     <td>{{ $log->humidity }} %</td>
@@ -242,7 +254,7 @@
         }
     });
 
-    // Auto-refresh dashboard every 5 seconds
-    setTimeout(() => location.reload(), 5000);
+    // Refresh sensor data every 5s (clock updates every 1s via smartroom-time.js)
+    setInterval(() => location.reload(), 5000);
 </script>
 @endpush

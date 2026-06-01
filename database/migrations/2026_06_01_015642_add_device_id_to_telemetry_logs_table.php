@@ -6,27 +6,25 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
-        if (!Schema::hasTable('telemetry_logs') || Schema::hasColumn('telemetry_logs', 'motion_detected')) {
+        if (!Schema::hasTable('telemetry_logs') || Schema::hasColumn('telemetry_logs', 'device_id')) {
             return;
         }
 
         Schema::table('telemetry_logs', function (Blueprint $table) {
-            $table->boolean('motion_detected')->default(false)->after('light_level');
+            $table->string('device_id')->nullable()->after('id');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
+        if (!Schema::hasTable('telemetry_logs') || !Schema::hasColumn('telemetry_logs', 'device_id')) {
+            return;
+        }
+
         Schema::table('telemetry_logs', function (Blueprint $table) {
-            $table->dropColumn('motion_detected');
+            $table->dropColumn('device_id');
         });
     }
 };

@@ -4,7 +4,22 @@
 @section('page-title', 'Smart Room Dashboard')
 @section('page-sub', 'Real-time sensor data and actuator controls · ESP32 connected')
 
+@push('styles')
+<style>
+    .realtime-clock {
+        font-family: monospace;
+        font-size: 14px;
+        color: var(--text-2);
+    }
+</style>
+@endpush
+
 @section('content')
+
+{{-- Real-time Clock --}}
+<div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+    <div class="realtime-clock" id="realtimeClock">Loading...</div>
+</div>
 
 {{-- Sensor Data Cards --}}
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px;">
@@ -109,7 +124,9 @@
             <tbody>
                 @foreach($recentLogs as $log)
                     <tr>
-                        <td style="padding:10px;font-family:monospace;font-size:12px;color:var(--text-2);">{{ $log->created_at->format('H:i:s') }}</td>
+                        <td style="padding:10px;font-family:monospace;font-size:12px;color:var(--text-2);">
+                            <span class="log-time" data-timestamp="{{ $log->created_at->timestamp }}">{{ $log->created_at->format('H:i:s') }}</span>
+                        </td>
                         <td style="padding:10px;font-weight:600;">{{ number_format($log->temperature, 1) }}°C</td>
                         <td style="padding:10px;">{{ $log->humidity }}%</td>
                         <td style="padding:10px;">{{ $log->light_level }} Lux</td>
@@ -121,5 +138,52 @@
         <div style="text-align:center;padding:32px;color:var(--text-3);">No sensor data received yet. ESP32 should be sending data every 5 seconds.</div>
     @endif
 </div>
+
+@push('scripts')
+<script>
+    function updateClock() {
+        const now = new Date();
+        const options = {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        };
+        document.getElementById('realtimeClock').textContent = now.toLocaleString('en-US', options);
+    }
+
+    function updateLogTimes() {
+        const now = Math.floor(Date.now() / 1000);
+        document.querySelectorAll('.log-time').forEach(element => {
+            const timestamp = parseInt(element.getAttribute('data-timestamp'));
+            const seconds = now - timestamp;
+            
+            let timeAgo;
+            if (seconds < 60) {
+                timeAgo = `${seconds}s ago`;
+            } else if (seconds < 3600) {
+                const minutes = Math.floor(seconds / 60);
+                timeAgo = `${minutes}m ago`;
+            } else {
+                const hours = Math.floor(seconds / 3600);
+                timeAgo = `${hours}h ago`;
+            }
+            
+            element.textContent = timeAgo;
+        });
+    }
+
+    // Update clock immediately and then every second
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    // Update log times immediately and then every second
+    updateLogTimes();
+    setInterval(updateLogTimes, 1000);
+</script>
+@endpush
 
 @endsection

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class ActuatorState extends Model
 {
     protected $fillable = [
+        'device_id',
         'actuator_name',
         'state',
     ];
@@ -15,22 +16,19 @@ class ActuatorState extends Model
         'state' => 'integer',
     ];
 
-    /**
-     * Helper: get the state of a specific actuator.
-     */
-    public static function getState(string $name): int
+    public static function getState(string $name, string $deviceId): int
     {
-        $row = self::where('actuator_name', $name)->first();
+        $row = self::where('device_id', $deviceId)
+            ->where('actuator_name', $name)
+            ->first();
+
         return $row ? $row->state : 0;
     }
 
-    /**
-     * Helper: set the state of a specific actuator.
-     */
-    public static function setState(string $name, int $state): void
+    public static function setState(string $name, int $state, string $deviceId): void
     {
         self::updateOrCreate(
-            ['actuator_name' => $name],
+            ['device_id' => $deviceId, 'actuator_name' => $name],
             ['state' => $state]
         );
     }
