@@ -19,7 +19,9 @@ class DeviceContext
         $user = $user ?? ($request?->user() ?? auth()->user());
 
         if (!$user) {
-            return $request?->query('device_id') ?? $request?->input('device_id');
+            $deviceId = $request?->query('device_id') ?? $request?->input('device_id');
+
+            return $deviceId ? Device::normalizeId($deviceId) : null;
         }
 
         if ($user->is_admin) {
@@ -28,13 +30,14 @@ class DeviceContext
                 ?? session('monitor_device_id');
 
             if ($deviceId) {
+                $deviceId = Device::normalizeId($deviceId);
                 session(['monitor_device_id' => $deviceId]);
             }
 
-            return $deviceId;
+            return $deviceId ?: null;
         }
 
-        return $user->device_id;
+        return $user->device_id ? Device::normalizeId($user->device_id) : null;
     }
 
     /**
@@ -73,14 +76,19 @@ class DeviceContext
         if ($user->is_admin) {
             $deviceId = static::activeDeviceId($request, $user);
             if ($deviceId) {
-                $query->where('device_id', $deviceId);
+                return $query
+                    ->where('device_id', $deviceId)
+                    ->whereNotNull('device_id');
             }
 
-            return $query;
+            // Admin must pick a room — never mix telemetry from multiple devices.
+            return $query->whereRaw('1 = 0');
         }
 
         if ($user->device_id) {
-            return $query->where('device_id', $user->device_id);
+            return $query
+                ->where('device_id', Device::normalizeId($user->device_id))
+                ->whereNotNull('device_id');
         }
 
         return $query->whereRaw('1 = 0');

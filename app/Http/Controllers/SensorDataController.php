@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActuatorState;
 use App\Models\TelemetryLog;
 use App\Support\DeviceContext;
+use App\Support\DevicePresence;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -19,8 +20,11 @@ class SensorDataController extends Controller
             'light_level' => 'required|integer',
         ]);
 
-        $deviceId = $validated['device_id'];
-        TelemetryLog::create($validated);
+        $deviceId = \App\Models\Device::normalizeId($validated['device_id']);
+        $validated['device_id'] = $deviceId;
+        $log = TelemetryLog::create($validated);
+
+        DevicePresence::markSeen($deviceId);
 
         if ($validated['temperature'] > 33) {
             ActuatorState::setState('buzzer', 1, $deviceId);
@@ -34,7 +38,12 @@ class SensorDataController extends Controller
             ActuatorState::setState('led', 0, $deviceId);
         }
 
-        return response()->json(['message' => 'Data saved successfully.'], 201);
+        return response()->json([
+            'message'    => 'Data saved successfully.',
+            'device_id'  => $deviceId,
+            'log_id'     => $log->id,
+            'saved_at'   => $log->created_at->toIso8601String(),
+        ], 201);
     }
 
     public function latest(Request $request): JsonResponse
@@ -48,19 +57,24 @@ class SensorDataController extends Controller
             ], 403);
         }
 
-        $query = DeviceContext::scopeTelemetry(TelemetryLog::query(), $request, $user);
-        $log = $query->latest()->first();
+        $deviceId = DeviceContext::activeDeviceId($request, $user);
+        $log = $deviceId ? DevicePresence::latestForDevice($deviceId) : null;
 
         if (!$log) {
             return response()->json(array_merge(
-                ['message' => 'No data yet.'],
+                [
+                    'message'        => 'No data yet for this room.',
+                    'device_online'  => false,
+                ],
+                DevicePresence::meta(null, $deviceId),
                 TimeController::meta()
             ), 404);
         }
 
         $payload = $log->toArray();
-        $payload = array_merge($payload, TimeController::meta());
-        $payload['reading_age_seconds'] = now()->diffInSeconds($log->created_at);
+        $payload = array_merge($payload, TimeController::meta(), DevicePresence::meta($log, $deviceId));
+        $payload['device_online'] = DevicePresence::isOnline($log, $deviceId);
+        unset($payload['online']);
         $payload['reading_time_formatted'] = $log->created_at->format('M j, Y g:i:s A');
 
         return response()->json($payload);

@@ -3,7 +3,15 @@
 @section('title', 'Dashboard')
 @section('page-title', 'Dashboard')
 @section('page-sub')
-    Live <span data-live-clock-short>--:--:--</span>{{ $activeDeviceId ? ' · ' . $activeDeviceId : ' · Select a room' }}@if($latest) · Last reading <span data-timestamp="{{ $latest->created_at->timestamp }}" data-live-mode="ago">{{ $latest->created_at->diffForHumans() }}</span>@endif
+    Live <span data-live-clock-short>--:--:--</span>{{ $activeDeviceId ? ' · ' . $activeDeviceId : ' · Select a room' }}
+    @if($deviceOnline && $latest)
+        · Live · last POST <span data-timestamp="{{ $latest->created_at->timestamp }}" data-live-mode="ago">{{ $latest->created_at->diffForHumans() }}</span>
+    @elseif($latest)
+        · Offline · last DB row {{ $latest->created_at->format('M j, g:i:s A') }}
+    @endif
+    @if($lastPostDeviceId)
+        · ESP32 last posted as <strong>{{ $lastPostDeviceId }}</strong>
+    @endif
 @endsection
 
 @section('content')
@@ -12,6 +20,22 @@
 <div class="alert-bar error" style="margin-bottom:16px;">
     <i class="ti ti-alert-circle"></i>
     No rooms yet. Register device IDs under <strong>Devices</strong>, or wait for ESP32 telemetry.
+</div>
+@elseif($activeDeviceId && $lastPostDeviceId && $lastPostDeviceId !== $activeDeviceId && $deviceOnline === false)
+<div class="alert-bar error" style="margin-bottom:16px;background:var(--amber-light);border-color:#FAC775;color:var(--amber-text);">
+    <i class="ti ti-alert-circle"></i>
+    Your ESP32 is posting as <strong>{{ $lastPostDeviceId }}</strong>, but you are monitoring <strong>{{ $activeDeviceId }}</strong>.
+    Update firmware <code style="font-family:monospace;">deviceId</code> or switch the monitor room dropdown.
+</div>
+@elseif($activeDeviceId && !$deviceOnline)
+<div class="alert-bar error" style="margin-bottom:16px;">
+    <i class="ti ti-alert-circle"></i>
+    <strong>{{ $activeDeviceId }}</strong> is offline — no ESP32 has sent data for this ID in the last {{ config('smartroom.device_stale_seconds') }} seconds.
+    @if($latest)
+        Last stored row: {{ $latest->created_at->format('M j, Y g:i:s A') }} (device {{ $latest->device_id }}).
+    @else
+        No telemetry has been received for this room yet. Check that firmware uses <code style="font-family:monospace;">deviceId = "{{ $activeDeviceId }}"</code>.
+    @endif
 </div>
 @endif
 
@@ -73,10 +97,30 @@
     <div class="metric-card">
         <div class="metric-icon-row">
             <div class="metric-icon mi-status"><i class="ti ti-wifi"></i></div>
+            @if($deviceOnline)
+                <span class="badge badge-ok">Live</span>
+            @else
+                <span class="badge badge-alert">Offline</span>
+            @endif
         </div>
         <div class="metric-label">Device Status</div>
-        <div class="metric-value" style="font-size:20px;color:var(--green-text);">Online</div>
-        <div class="metric-sub">{{ $activeDeviceId ?? 'No room selected' }} · polling</div>
+        <div class="metric-value" style="font-size:20px;color:{{ $deviceOnline ? 'var(--green-text)' : 'var(--red-text)' }};">
+            {{ $deviceOnline ? 'Online' : 'Offline' }}
+        </div>
+        <div class="metric-sub">
+            @if($activeDeviceId)
+                {{ $activeDeviceId }}
+                @if($deviceOnline && $latest)
+                    · reporting now
+                @elseif($latest)
+                    · last seen <span data-timestamp="{{ $latest->created_at->timestamp }}" data-live-mode="ago">{{ $latest->created_at->diffForHumans() }}</span>
+                @else
+                    · no ESP32 data for this ID
+                @endif
+            @else
+                Select a room to monitor
+            @endif
+        </div>
     </div>
 
 </div>
@@ -143,10 +187,10 @@
         <div class="panel">
             <div class="panel-title">Device Info</div>
             <div class="device-grid">
-                <div class="device-item"><div class="dk">Device ID</div><div class="dv">{{ $activeDeviceId ?? '—' }}</div></div>
-                <div class="device-item"><div class="dk">Poll interval</div><div class="dv">1–2 sec</div></div>
-                <div class="device-item"><div class="dk">Sensor POST</div><div class="dv" style="font-size:11px;font-family:monospace;">/api/sensor-data</div></div>
-                <div class="device-item"><div class="dk">Actuator GET</div><div class="dv" style="font-size:11px;font-family:monospace;">/api/actuator-status</div></div>
+                <div class="device-item"><div class="dk">Monitoring</div><div class="dv" id="presence-monitor-id">{{ $activeDeviceId ?? '—' }}</div></div>
+                <div class="device-item"><div class="dk">Status</div><div class="dv" id="presence-status-label" style="color:{{ $deviceOnline ? 'var(--green-text)' : 'var(--red-text)' }};">{{ $deviceOnline ? 'Online' : 'Offline' }}</div></div>
+                <div class="device-item"><div class="dk">Last ESP32 POST</div><div class="dv" id="presence-last-post" style="font-size:11px;font-family:monospace;">{{ $lastPostDeviceId ?? '—' }}{{ $lastPostAt ? ' · ' . \Carbon\Carbon::parse($lastPostAt)->format('g:i:s A') : '' }}</div></div>
+                <div class="device-item"><div class="dk">Stale after</div><div class="dv">{{ config('smartroom.device_stale_seconds') }}s without POST</div></div>
             </div>
         </div>
 
@@ -163,6 +207,7 @@
         <thead>
             <tr>
                 <th>Time</th>
+                <th>Device ID</th>
                 <th>Temperature</th>
                 <th>Humidity</th>
                 <th>Light</th>
@@ -174,8 +219,8 @@
                 <tr>
                     <td style="color:var(--text-2);font-family:monospace;font-size:12px;">
                         <span data-timestamp="{{ $log->created_at->timestamp }}" data-live-mode="absolute" title="{{ $log->created_at->format('Y-m-d H:i:s') }}">{{ $log->created_at->format('h:i:s A') }}</span>
-                        <span style="color:var(--text-3);font-size:11px;"> (<span data-timestamp="{{ $log->created_at->timestamp }}" data-live-mode="ago">—</span>)</span>
                     </td>
+                    <td style="font-family:monospace;font-size:12px;">{{ $log->device_id ?? '—' }}</td>
                     <td>{{ number_format($log->temperature, 1) }} °C</td>
                     <td>{{ $log->humidity }} %</td>
                     <td>{{ $log->light_level }} Lux</td>
@@ -190,7 +235,7 @@
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="5" style="text-align:center;color:var(--text-3);padding:24px;">No data yet. Waiting for ESP32…</td></tr>
+                <tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:24px;">No data yet for this room.</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -254,7 +299,53 @@
         }
     });
 
-    // Refresh sensor data every 5s (clock updates every 1s via smartroom-time.js)
-    setInterval(() => location.reload(), 5000);
+    const presenceUrl = @json(route('dashboard.presence'));
+    const staleAfter = {{ (int) config('smartroom.device_stale_seconds', 25) }};
+
+    async function pollPresence() {
+        try {
+            const res = await fetch(presenceUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+            const data = await res.json();
+            const online = data.device_online === true;
+            const statusEl = document.getElementById('device-status-text');
+            const statusLabel = document.getElementById('presence-status-label');
+            const lastPostEl = document.getElementById('presence-last-post');
+            const pill = statusEl?.closest('.status-pill');
+
+            if (statusEl && data.device_id) {
+                statusEl.textContent = (online ? 'Online' : 'Offline') + ' · ' + data.device_id;
+            }
+            if (pill) {
+                pill.style.background = online ? '' : 'var(--red-light)';
+                pill.style.color = online ? '' : 'var(--red-text)';
+                const dot = pill.querySelector('.status-dot');
+                if (dot) dot.style.background = online ? 'var(--green)' : 'var(--red)';
+            }
+            if (statusLabel) {
+                statusLabel.textContent = online ? 'Online' : 'Offline';
+                statusLabel.style.color = online ? 'var(--green-text)' : 'var(--red-text)';
+            }
+            if (lastPostEl && data.last_post_device_id) {
+                lastPostEl.textContent = data.last_post_device_id + (data.last_post_at ? ' · ' + new Date(data.last_post_at).toLocaleTimeString() : '');
+            }
+            if (!online && data.reading_age_seconds != null && data.reading_age_seconds > staleAfter) {
+                // Full reload occasionally so metrics/chart match DB when room is offline
+                if (!window.__presenceReloadAt || Date.now() - window.__presenceReloadAt > 30000) {
+                    window.__presenceReloadAt = Date.now();
+                    location.reload();
+                }
+            } else if (online) {
+                if (!window.__presenceReloadAt || Date.now() - window.__presenceReloadAt > 5000) {
+                    window.__presenceReloadAt = Date.now();
+                    location.reload();
+                }
+            }
+        } catch (e) {
+            console.warn('presence poll failed', e);
+        }
+    }
+
+    setInterval(pollPresence, 3000);
+    pollPresence();
 </script>
 @endpush

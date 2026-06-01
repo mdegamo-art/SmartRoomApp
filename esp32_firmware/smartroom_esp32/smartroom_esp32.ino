@@ -10,7 +10,7 @@ const char* password = "12345678";
 const char* serverUrl = "http://10.182.231.239:8000/api";
 
 // Device Configuration
-const char* deviceId = "SMARTROOM-001"; // Unique device ID for this ESP32
+const char* deviceId = "SMARTROOM-003"; // Unique device ID for this ESP32
 
 // Sensor Pin Definitions
 #define DHT_PIN 4
@@ -162,10 +162,17 @@ void sendSensorData() {
   int httpResponseCode = http.POST(jsonString);
   
   if (httpResponseCode > 0) {
-    Serial.print("Sensor data sent. Response code: ");
+    Serial.print("Sensor data sent as ");
+    Serial.print(deviceId);
+    Serial.print(". Response code: ");
     Serial.println(httpResponseCode);
     Serial.print("Payload: ");
     Serial.println(jsonString);
+    if (httpResponseCode == 201) {
+      String body = http.getString();
+      Serial.print("Server confirmed device_id in response: ");
+      Serial.println(body);
+    }
   } else {
     Serial.print("Error sending sensor data: ");
     Serial.println(httpResponseCode);

@@ -24,6 +24,7 @@ Route::post('/logout',[\App\Http\Controllers\Auth\AuthenticatedSessionController
 Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard',           [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard/presence',  [DashboardController::class, 'presence'])->name('dashboard.presence');
     Route::get('/dashboard/logs',      [DashboardController::class, 'logs'])->name('logs');
     Route::get('/dashboard/actuators', [DashboardController::class, 'actuators'])->name('actuators');
 

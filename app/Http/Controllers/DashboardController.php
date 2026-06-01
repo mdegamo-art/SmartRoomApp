@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\ActuatorState;
 use App\Models\TelemetryLog;
+use App\Models\Device;
 use App\Support\DeviceContext;
+use App\Support\DevicePresence;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class DashboardController extends Controller
 {
@@ -19,9 +22,15 @@ class DashboardController extends Controller
             session(['monitor_device_id' => $activeDeviceId]);
         }
 
+        if ($activeDeviceId) {
+            $activeDeviceId = Device::normalizeId($activeDeviceId);
+            session(['monitor_device_id' => $activeDeviceId]);
+        }
+
+        $latest = $activeDeviceId ? DevicePresence::latestForDevice($activeDeviceId) : null;
+
         $telemetryQuery = DeviceContext::scopeTelemetry(TelemetryLog::query(), $request);
-        $latest = (clone $telemetryQuery)->latest()->first();
-        $recentLogs = (clone $telemetryQuery)->latest()->take(5)->get();
+        $recentLogs = (clone $telemetryQuery)->latest('created_at')->take(5)->get();
 
         $ledState = 0;
         $buzzerState = 0;
@@ -37,6 +46,10 @@ class DashboardController extends Controller
         $chartData = $chartQuery->orderBy('created_at')
             ->get(['temperature', 'humidity', 'light_level', 'created_at']);
 
+        $deviceOnline = DevicePresence::isOnline($latest, $activeDeviceId);
+        $lastPostDeviceId = DevicePresence::lastIngestDeviceId();
+        $lastPostAt = DevicePresence::lastIngestAt();
+
         return view('dashboard.index', compact(
             'latest',
             'recentLogs',
@@ -44,8 +57,39 @@ class DashboardController extends Controller
             'buzzerState',
             'chartData',
             'activeDeviceId',
-            'deviceIds'
+            'deviceIds',
+            'deviceOnline',
+            'lastPostDeviceId',
+            'lastPostAt'
         ));
+    }
+
+    /**
+     * JSON status for dashboard polling (session auth).
+     */
+    public function presence(Request $request): JsonResponse
+    {
+        $deviceId = DeviceContext::activeDeviceId($request);
+        if (!$deviceId) {
+            return response()->json([
+                'device_id'           => null,
+                'device_online'       => false,
+                'last_post_device_id' => DevicePresence::lastIngestDeviceId(),
+                'last_post_at'        => DevicePresence::lastIngestAt(),
+            ]);
+        }
+
+        $deviceId = Device::normalizeId($deviceId);
+        $latest = DevicePresence::latestForDevice($deviceId);
+
+        return response()->json(array_merge([
+            'device_id'     => $deviceId,
+            'device_online' => DevicePresence::isOnline($latest, $deviceId),
+            'temperature'   => $latest?->temperature,
+            'humidity'      => $latest?->humidity,
+            'light_level'   => $latest?->light_level,
+            'reading_at'    => $latest?->created_at?->toIso8601String(),
+        ], DevicePresence::meta($latest, $deviceId)));
     }
 
     public function logs(Request $request)

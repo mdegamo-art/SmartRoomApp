@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Support\DeviceContext;
+use App\Support\DevicePresence;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,12 +23,19 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         View::composer('layouts.app', function ($view) {
-            if (!auth()->check() || !auth()->user()->is_admin) {
+            if (!auth()->check()) {
                 return;
             }
 
-            $view->with('monitorDeviceIds', DeviceContext::availableDeviceIds());
-            $view->with('monitorDeviceId', DeviceContext::activeDeviceId());
+            $deviceId = DeviceContext::activeDeviceId();
+            $latest = DevicePresence::latestForDevice($deviceId);
+
+            $view->with('monitorDeviceId', $deviceId);
+            $view->with('monitorDeviceOnline', DevicePresence::isOnline($latest, $deviceId));
+
+            if (auth()->user()->is_admin) {
+                $view->with('monitorDeviceIds', DeviceContext::availableDeviceIds());
+            }
         });
     }
 }

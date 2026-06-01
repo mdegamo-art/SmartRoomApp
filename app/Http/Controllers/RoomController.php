@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\TelemetryLog;
 use App\Models\User;
 use App\Support\DeviceContext;
+use App\Support\DevicePresence;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -26,7 +27,7 @@ class RoomController extends Controller
             $user = $usersByDevice->get($deviceId);
             $latest = TelemetryLog::where('device_id', $deviceId)->latest()->first();
 
-            return [
+            return array_merge([
                 'device_id'       => $deviceId,
                 'assigned_user'   => $user ? [
                     'id'    => $user->id,
@@ -34,7 +35,7 @@ class RoomController extends Controller
                     'email' => $user->email,
                 ] : null,
                 'last_reading_at' => $latest?->created_at?->toIso8601String(),
-            ];
+            ], DevicePresence::meta($latest));
         }, $deviceIds);
 
         return response()->json([

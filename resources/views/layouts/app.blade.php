@@ -416,9 +416,13 @@
                 @elseif(!auth()->user()->is_admin && auth()->user()->device_id)
                 <span style="font-size:12px;font-family:monospace;color:var(--text-2);padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);">{{ auth()->user()->device_id }}</span>
                 @endif
-                <div class="status-pill">
-                    <div class="status-dot"></div>
-                    <span id="device-status-text">{{ $monitorDeviceId ?? auth()->user()->device_id ?? 'No device' }}</span>
+                @php
+                    $presenceOnline = $monitorDeviceOnline ?? false;
+                    $presenceDevice = $monitorDeviceId ?? auth()->user()->device_id ?? 'No device';
+                @endphp
+                <div class="status-pill" style="{{ $presenceOnline ? '' : 'background:var(--red-light);color:var(--red-text);' }}">
+                    <div class="status-dot" style="background:{{ $presenceOnline ? 'var(--green)' : 'var(--red)' }};"></div>
+                    <span id="device-status-text">{{ $presenceOnline ? 'Online' : 'Offline' }} · {{ $presenceDevice }}</span>
                 </div>
                 <a href="{{ route('dashboard') }}" class="icon-btn" title="Refresh">
                     <i class="ti ti-refresh"></i>
