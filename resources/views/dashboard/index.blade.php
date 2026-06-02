@@ -47,15 +47,15 @@
         <div class="metric-icon-row">
             <div class="metric-icon mi-temp"><i class="ti ti-temperature"></i></div>
             @if($latest && $latest->temperature > 35)
-                <span class="badge badge-alert">High</span>
+                <span id="metric-temp-badge" class="badge badge-alert">High</span>
             @elseif($latest && $latest->temperature > 30)
-                <span class="badge badge-warn">Warm</span>
+                <span id="metric-temp-badge" class="badge badge-warn">Warm</span>
             @else
-                <span class="badge badge-ok">Normal</span>
+                <span id="metric-temp-badge" class="badge badge-ok">Normal</span>
             @endif
         </div>
         <div class="metric-label">Temperature</div>
-        <div class="metric-value">
+        <div class="metric-value" id="metric-temp-value">
             {{ $latest ? number_format($latest->temperature, 1) : '--' }}<span class="metric-unit">°C</span>
         </div>
         <div class="metric-sub">DHT11 · Room sensor</div>
@@ -65,10 +65,10 @@
     <div class="metric-card">
         <div class="metric-icon-row">
             <div class="metric-icon mi-hum"><i class="ti ti-droplet"></i></div>
-            <span class="badge badge-ok">Normal</span>
+            <span id="metric-hum-badge" class="badge badge-ok">Normal</span>
         </div>
         <div class="metric-label">Humidity</div>
-        <div class="metric-value">
+        <div class="metric-value" id="metric-hum-value">
             {{ $latest ? $latest->humidity : '--' }}<span class="metric-unit">%</span>
         </div>
         <div class="metric-sub">DHT11 · Room sensor</div>
@@ -79,15 +79,15 @@
         <div class="metric-icon-row">
             <div class="metric-icon mi-lux"><i class="ti ti-sun"></i></div>
             @if($latest && $latest->light_level > 400)
-                <span class="badge badge-warn">Bright</span>
+                <span id="metric-light-badge" class="badge badge-warn">Bright</span>
             @elseif($latest && $latest->light_level < 100)
-                <span class="badge badge-blue">Dark</span>
+                <span id="metric-light-badge" class="badge badge-blue">Dark</span>
             @else
-                <span class="badge badge-ok">Normal</span>
+                <span id="metric-light-badge" class="badge badge-ok">Normal</span>
             @endif
         </div>
         <div class="metric-label">Light Intensity</div>
-        <div class="metric-value">
+        <div class="metric-value" id="metric-light-value">
             {{ $latest ? $latest->light_level : '--' }}<span class="metric-unit"> Lux</span>
         </div>
         <div class="metric-sub">LDR · Light sensor</div>
@@ -98,16 +98,16 @@
         <div class="metric-icon-row">
             <div class="metric-icon mi-status"><i class="ti ti-wifi"></i></div>
             @if($deviceOnline)
-                <span class="badge badge-ok">Live</span>
+                <span id="metric-device-badge" class="badge badge-ok">Live</span>
             @else
-                <span class="badge badge-alert">Offline</span>
+                <span id="metric-device-badge" class="badge badge-alert">Offline</span>
             @endif
         </div>
         <div class="metric-label">Device Status</div>
-        <div class="metric-value" style="font-size:20px;color:{{ $deviceOnline ? 'var(--green-text)' : 'var(--red-text)' }};">
+        <div id="metric-device-value" class="metric-value" style="font-size:20px;color:{{ $deviceOnline ? 'var(--green-text)' : 'var(--red-text)' }};">
             {{ $deviceOnline ? 'Online' : 'Offline' }}
         </div>
-        <div class="metric-sub">
+        <div id="metric-device-sub" class="metric-sub">
             @if($activeDeviceId)
                 {{ $activeDeviceId }}
                 @if($deviceOnline && $latest)
@@ -214,7 +214,7 @@
                 <th>Status</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="recent-telemetry-body">
             @forelse($recentLogs as $log)
                 <tr>
                     <td style="color:var(--text-2);font-family:monospace;font-size:12px;">
@@ -258,7 +258,7 @@
     const luxs  = chartData.map(d => Math.round(d.light_level / 10));
 
     const ctx = document.getElementById('trendChart');
-    new Chart(ctx, {
+    const trendChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels,
@@ -300,6 +300,8 @@
     });
 
     const presenceUrl = @json(route('dashboard.presence'));
+    const chartDataUrl = @json(route('dashboard.chart-data'));
+    const liveDataUrl = @json(route('dashboard.live-data'));
     const staleAfter = {{ (int) config('smartroom.device_stale_seconds', 25) }};
 
     async function pollPresence() {
@@ -328,24 +330,154 @@
             if (lastPostEl && data.last_post_device_id) {
                 lastPostEl.textContent = data.last_post_device_id + (data.last_post_at ? ' · ' + new Date(data.last_post_at).toLocaleTimeString() : '');
             }
-            if (!online && data.reading_age_seconds != null && data.reading_age_seconds > staleAfter) {
-                // Full reload occasionally so metrics/chart match DB when room is offline
-                if (!window.__presenceReloadAt || Date.now() - window.__presenceReloadAt > 30000) {
-                    window.__presenceReloadAt = Date.now();
-                    location.reload();
-                }
-            } else if (online) {
-                if (!window.__presenceReloadAt || Date.now() - window.__presenceReloadAt > 5000) {
-                    window.__presenceReloadAt = Date.now();
-                    location.reload();
-                }
-            }
+            // Do not reload the whole page here.
+            // Presence polling should only update UI widgets, not reset session idle timers.
         } catch (e) {
             console.warn('presence poll failed', e);
         }
     }
 
-    setInterval(pollPresence, 3000);
+    async function pollChartData() {
+        try {
+            const res = await fetch(chartDataUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+            const payload = await res.json();
+            const rows = Array.isArray(payload.data) ? payload.data : [];
+
+            const nextLabels = rows.map(d => {
+                const date = new Date(d.created_at);
+                return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            });
+            const nextTemps = rows.map(d => d.temperature);
+            const nextHums  = rows.map(d => d.humidity);
+            const nextLuxs  = rows.map(d => Math.round(d.light_level / 10));
+
+            trendChart.data.labels = nextLabels;
+            trendChart.data.datasets[0].data = nextTemps;
+            trendChart.data.datasets[1].data = nextHums;
+            trendChart.data.datasets[2].data = nextLuxs;
+            trendChart.update('none');
+        } catch (e) {
+            console.warn('chart poll failed', e);
+        }
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
+
+    function setBadgeClass(el, variant) {
+        if (!el) return;
+        el.classList.remove('badge-ok', 'badge-warn', 'badge-alert', 'badge-blue');
+        el.classList.add(variant);
+    }
+
+    async function pollLiveData() {
+        try {
+            const res = await fetch(liveDataUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+            const payload = await res.json();
+            const latest = payload.latest;
+            const online = payload.device_online === true;
+            const deviceId = payload.device_id || '—';
+
+            const tempBadge = document.getElementById('metric-temp-badge');
+            const tempValue = document.getElementById('metric-temp-value');
+            const humValue = document.getElementById('metric-hum-value');
+            const lightBadge = document.getElementById('metric-light-badge');
+            const lightValue = document.getElementById('metric-light-value');
+            const deviceBadge = document.getElementById('metric-device-badge');
+            const deviceValue = document.getElementById('metric-device-value');
+            const deviceSub = document.getElementById('metric-device-sub');
+            const recentBody = document.getElementById('recent-telemetry-body');
+
+            const t = latest?.temperature;
+            const h = latest?.humidity;
+            const l = latest?.light_level;
+
+            if (tempValue) tempValue.innerHTML = `${t != null ? Number(t).toFixed(1) : '--'}<span class="metric-unit">°C</span>`;
+            if (humValue) humValue.innerHTML = `${h != null ? h : '--'}<span class="metric-unit">%</span>`;
+            if (lightValue) lightValue.innerHTML = `${l != null ? l : '--'}<span class="metric-unit"> Lux</span>`;
+
+            if (tempBadge) {
+                if (t != null && t > 35) {
+                    tempBadge.textContent = 'High';
+                    setBadgeClass(tempBadge, 'badge-alert');
+                } else if (t != null && t > 30) {
+                    tempBadge.textContent = 'Warm';
+                    setBadgeClass(tempBadge, 'badge-warn');
+                } else {
+                    tempBadge.textContent = 'Normal';
+                    setBadgeClass(tempBadge, 'badge-ok');
+                }
+            }
+
+            if (lightBadge) {
+                if (l != null && l > 400) {
+                    lightBadge.textContent = 'Bright';
+                    setBadgeClass(lightBadge, 'badge-warn');
+                } else if (l != null && l < 100) {
+                    lightBadge.textContent = 'Dark';
+                    setBadgeClass(lightBadge, 'badge-blue');
+                } else {
+                    lightBadge.textContent = 'Normal';
+                    setBadgeClass(lightBadge, 'badge-ok');
+                }
+            }
+
+            if (deviceBadge) {
+                deviceBadge.textContent = online ? 'Live' : 'Offline';
+                setBadgeClass(deviceBadge, online ? 'badge-ok' : 'badge-alert');
+            }
+            if (deviceValue) {
+                deviceValue.textContent = online ? 'Online' : 'Offline';
+                deviceValue.style.color = online ? 'var(--green-text)' : 'var(--red-text)';
+            }
+            if (deviceSub) {
+                deviceSub.textContent = `${deviceId} · ${online ? 'reporting now' : 'no recent telemetry'}`;
+            }
+
+            if (recentBody) {
+                const rows = Array.isArray(payload.recent_logs) ? payload.recent_logs : [];
+                if (rows.length === 0) {
+                    recentBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:24px;">No data yet for this room.</td></tr>';
+                } else {
+                    recentBody.innerHTML = rows.map((log) => {
+                        const status = log.status === 'alert'
+                            ? '<span class="badge badge-alert">Alert</span>'
+                            : log.status === 'warning'
+                                ? '<span class="badge badge-warn">Warning</span>'
+                                : '<span class="badge badge-ok">Normal</span>';
+                        const ts = log.created_at
+                            ? new Date(log.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                            : '--';
+                        const tempVal = log.temperature != null ? Number(log.temperature).toFixed(1) : '--';
+                        return `
+                            <tr>
+                                <td style="color:var(--text-2);font-family:monospace;font-size:12px;">${escapeHtml(ts)}</td>
+                                <td style="font-family:monospace;font-size:12px;">${escapeHtml(log.device_id ?? '—')}</td>
+                                <td>${escapeHtml(tempVal)} °C</td>
+                                <td>${escapeHtml(log.humidity)} %</td>
+                                <td>${escapeHtml(log.light_level)} Lux</td>
+                                <td>${status}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            }
+        } catch (e) {
+            console.warn('live-data poll failed', e);
+        }
+    }
+
+    setInterval(pollPresence, 5000);
     pollPresence();
+    setInterval(pollChartData, 3000);
+    pollChartData();
+    setInterval(pollLiveData, 3000);
+    pollLiveData();
 </script>
 @endpush

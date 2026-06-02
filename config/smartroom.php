@@ -14,4 +14,15 @@ return [
     */
     'device_stale_seconds' => (int) env('SMARTROOM_DEVICE_STALE_SECONDS', 25),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Web admin inactivity auto-logout timeout
+    |--------------------------------------------------------------------------
+    |
+    | If there is no keyboard/mouse/touch activity in the dashboard for this
+    | many seconds, the browser will auto-submit the logout form.
+    |
+    */
+    'web_inactivity_logout_seconds' => (int) env('SMARTROOM_WEB_IDLE_LOGOUT_SECONDS', 900),
+
 ];

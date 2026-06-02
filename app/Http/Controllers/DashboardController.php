@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActuatorState;
 use App\Models\TelemetryLog;
 use App\Models\Device;
+use App\Models\SystemEvent;
 use App\Support\DeviceContext;
 use App\Support\DevicePresence;
 use Illuminate\Http\Request;
@@ -92,6 +93,69 @@ class DashboardController extends Controller
         ], DevicePresence::meta($latest, $deviceId)));
     }
 
+    /**
+     * JSON chart points for dashboard trend graph polling (session auth).
+     */
+    public function chartData(Request $request): JsonResponse
+    {
+        $query = DeviceContext::scopeTelemetry(
+            TelemetryLog::where('created_at', '>=', now()->subHour()),
+            $request
+        );
+
+        $rows = $query->orderBy('created_at')
+            ->get(['temperature', 'humidity', 'light_level', 'created_at']);
+
+        return response()->json([
+            'data' => $rows,
+        ]);
+    }
+
+    /**
+     * JSON payload for live dashboard cards + recent telemetry table.
+     */
+    public function liveData(Request $request): JsonResponse
+    {
+        $deviceId = DeviceContext::activeDeviceId($request);
+        if (!$deviceId) {
+            return response()->json([
+                'device_id' => null,
+                'device_online' => false,
+                'latest' => null,
+                'recent_logs' => [],
+            ]);
+        }
+
+        $deviceId = Device::normalizeId($deviceId);
+        $latest = DevicePresence::latestForDevice($deviceId);
+        $recentLogs = DeviceContext::scopeTelemetry(TelemetryLog::query(), $request)
+            ->latest('created_at')
+            ->take(5)
+            ->get();
+
+        return response()->json([
+            'device_id' => $deviceId,
+            'device_online' => DevicePresence::isOnline($latest, $deviceId),
+            'latest' => $latest ? [
+                'temperature' => $latest->temperature,
+                'humidity' => $latest->humidity,
+                'light_level' => $latest->light_level,
+                'created_at' => $latest->created_at?->toIso8601String(),
+            ] : null,
+            'recent_logs' => $recentLogs->map(function (TelemetryLog $log) {
+                return [
+                    'id' => $log->id,
+                    'device_id' => $log->device_id,
+                    'temperature' => $log->temperature,
+                    'humidity' => $log->humidity,
+                    'light_level' => $log->light_level,
+                    'status' => $log->status,
+                    'created_at' => $log->created_at?->toIso8601String(),
+                ];
+            })->values(),
+        ]);
+    }
+
     public function logs(Request $request)
     {
         $filter = $request->query('filter', 'all');
@@ -122,8 +186,13 @@ class DashboardController extends Controller
         }
 
         $logs = $query->latest()->paginate(20)->withQueryString();
+        $events = SystemEvent::query()
+            ->when($activeDeviceId, fn ($q) => $q->where('device_id', $activeDeviceId))
+            ->latest()
+            ->take(30)
+            ->get();
 
-        return view('logs.index', compact('logs', 'filter', 'search', 'activeDeviceId', 'deviceIds'));
+        return view('logs.index', compact('logs', 'events', 'filter', 'search', 'activeDeviceId', 'deviceIds'));
     }
 
     public function actuators(Request $request)

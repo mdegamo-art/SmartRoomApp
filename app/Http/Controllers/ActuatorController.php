@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ActuatorState;
 use App\Support\DeviceContext;
+use App\Support\SystemEventLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -50,7 +51,24 @@ class ActuatorController extends Controller
             return response()->json(['message' => 'Unauthorized for this device.'], 403);
         }
 
+        $prevState = ActuatorState::getState($validated['actuator'], $deviceId);
         ActuatorState::setState($validated['actuator'], (int) $validated['state'], $deviceId);
+        $newState = (int) $validated['state'];
+
+        if ($prevState !== $newState) {
+            SystemEventLogger::log(
+                'actuator_change',
+                'Actuator updated from mobile API',
+                $deviceId,
+                $user,
+                [
+                    'actuator' => $validated['actuator'],
+                    'from' => $prevState,
+                    'to' => $newState,
+                    'channel' => 'mobile_api',
+                ]
+            );
+        }
 
         return response()->json([
             'message'   => 'Actuator updated.',
@@ -74,7 +92,24 @@ class ActuatorController extends Controller
             return redirect()->back()->with('error', 'Select a room to control actuators.');
         }
 
+        $prevState = ActuatorState::getState($validated['actuator'], $deviceId);
         ActuatorState::setState($validated['actuator'], (int) $validated['state'], $deviceId);
+        $newState = (int) $validated['state'];
+
+        if ($prevState !== $newState) {
+            SystemEventLogger::log(
+                'actuator_change',
+                'Actuator updated from web dashboard',
+                $deviceId,
+                $request->user(),
+                [
+                    'actuator' => $validated['actuator'],
+                    'from' => $prevState,
+                    'to' => $newState,
+                    'channel' => 'web_dashboard',
+                ]
+            );
+        }
 
         return redirect()->back()->with('success', ucfirst($validated['actuator']) . ' updated successfully.');
     }

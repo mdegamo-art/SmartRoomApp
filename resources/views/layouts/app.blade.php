@@ -315,6 +315,20 @@
             white-space: nowrap;
         }
         .live-clock-pill i { font-size: 14px; color: var(--text-2); }
+        .idle-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: var(--radius);
+            border: 1px solid #F7C1C1;
+            background: var(--red-light);
+            color: var(--red-text);
+            font-family: ui-monospace, monospace;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .idle-pill i { font-size: 13px; }
 
         /* Responsive */
         @media (max-width: 900px) {
@@ -374,7 +388,7 @@
             </div>
             <form method="POST" action="{{ route('logout') }}" style="margin-top:4px;">
                 @csrf
-                <button type="submit" style="width:100%;padding:8px 12px;border:none;background:none;text-align:left;color:var(--text-2);font-size:13px;cursor:pointer;border-radius:var(--radius);display:flex;align-items:center;gap:8px;">
+                <button id="web-logout-btn" type="submit" style="width:100%;padding:8px 12px;border:none;background:none;text-align:left;color:var(--text-2);font-size:13px;cursor:pointer;border-radius:var(--radius);display:flex;align-items:center;gap:8px;">
                     <i class="ti ti-logout" style="font-size:16px;"></i> Logout
                 </button>
             </form>
@@ -391,6 +405,10 @@
                 <div class="topbar-sub">@yield('page-sub', 'Smart Room Monitoring and Control System')</div>
             </div>
             <div class="topbar-right">
+                <div class="idle-pill" title="Auto logout after inactivity">
+                    <i class="ti ti-timer"></i>
+                    <span>Idle logout in <span id="idle-countdown">--:--</span></span>
+                </div>
                 <div class="live-clock-pill" title="Live time ({{ config('app.timezone') }})">
                     <i class="ti ti-clock"></i>
                     <span data-live-clock-short>--:--:--</span>
@@ -452,6 +470,57 @@
 
 <script>window.SMARTROOM_TIMEZONE = @json(config('app.timezone'));</script>
 <script src="{{ asset('js/smartroom-time.js') }}?v=1"></script>
+<script>
+    (function () {
+        const idleLimitSeconds = {{ (int) config('smartroom.web_inactivity_logout_seconds', 900) }};
+        const countdownEl = document.getElementById('idle-countdown');
+        const logoutButton = document.getElementById('web-logout-btn');
+        if (!countdownEl || !logoutButton || idleLimitSeconds <= 0) return;
+
+        const STORAGE_KEY = 'smartroom_web_last_activity_at';
+
+        function formatSec(totalSec) {
+            const mins = String(Math.floor(totalSec / 60)).padStart(2, '0');
+            const secs = String(totalSec % 60).padStart(2, '0');
+            return `${mins}:${secs}`;
+        }
+
+        function getLastActivity() {
+            const raw = window.localStorage.getItem(STORAGE_KEY);
+            const ts = raw ? parseInt(raw, 10) : NaN;
+            if (Number.isNaN(ts)) {
+                const now = Date.now();
+                window.localStorage.setItem(STORAGE_KEY, String(now));
+                return now;
+            }
+            return ts;
+        }
+
+        function setLastActivityToNow() {
+            const now = Date.now();
+            window.localStorage.setItem(STORAGE_KEY, String(now));
+        }
+
+        function tick() {
+            const lastActivity = getLastActivity();
+            const elapsedSec = Math.floor((Date.now() - lastActivity) / 1000);
+            const remaining = idleLimitSeconds - elapsedSec;
+            countdownEl.textContent = formatSec(Math.max(remaining, 0));
+            if (remaining <= 0) {
+                logoutButton.click();
+            }
+        }
+
+        ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach((eventName) => {
+            window.addEventListener(eventName, setLastActivityToNow, { passive: true });
+        });
+
+        // Initialize last-activity timestamp if missing and start ticking.
+        getLastActivity();
+        tick();
+        setInterval(tick, 1000);
+    })();
+</script>
 @stack('scripts')
 </body>
 </html>

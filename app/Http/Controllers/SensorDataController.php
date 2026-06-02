@@ -6,6 +6,7 @@ use App\Models\ActuatorState;
 use App\Models\TelemetryLog;
 use App\Support\DeviceContext;
 use App\Support\DevicePresence;
+use App\Support\SystemEventLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -27,15 +28,27 @@ class SensorDataController extends Controller
         DevicePresence::markSeen($deviceId);
 
         if ($validated['temperature'] > 33) {
-            ActuatorState::setState('buzzer', 1, $deviceId);
+            $this->applyAutomationState($deviceId, 'buzzer', 1, [
+                'rule' => 'temperature > 33',
+                'temperature' => (float) $validated['temperature'],
+            ]);
         } elseif ($validated['temperature'] < 33) {
-            ActuatorState::setState('buzzer', 0, $deviceId);
+            $this->applyAutomationState($deviceId, 'buzzer', 0, [
+                'rule' => 'temperature < 33',
+                'temperature' => (float) $validated['temperature'],
+            ]);
         }
 
         if ($validated['light_level'] < 40) {
-            ActuatorState::setState('led', 1, $deviceId);
+            $this->applyAutomationState($deviceId, 'led', 1, [
+                'rule' => 'light_level < 40',
+                'light_level' => (int) $validated['light_level'],
+            ]);
         } elseif ($validated['light_level'] > 60) {
-            ActuatorState::setState('led', 0, $deviceId);
+            $this->applyAutomationState($deviceId, 'led', 0, [
+                'rule' => 'light_level > 60',
+                'light_level' => (int) $validated['light_level'],
+            ]);
         }
 
         return response()->json([
@@ -99,5 +112,29 @@ class SensorDataController extends Controller
         $response = array_merge($response, TimeController::meta());
 
         return response()->json($response);
+    }
+
+    /**
+     * @param  array<string,mixed>  $meta
+     */
+    private function applyAutomationState(string $deviceId, string $actuator, int $targetState, array $meta): void
+    {
+        $prevState = ActuatorState::getState($actuator, $deviceId);
+        ActuatorState::setState($actuator, $targetState, $deviceId);
+
+        if ($prevState !== $targetState) {
+            SystemEventLogger::log(
+                'automation_change',
+                'Automation rule changed actuator state',
+                $deviceId,
+                null,
+                array_merge($meta, [
+                    'actuator' => $actuator,
+                    'from' => $prevState,
+                    'to' => $targetState,
+                    'channel' => 'sensor_ingest_rule',
+                ])
+            );
+        }
     }
 }

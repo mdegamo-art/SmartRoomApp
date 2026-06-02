@@ -119,4 +119,65 @@
     </div>
 @endif
 
+{{-- System modification audit trail --}}
+<div class="panel" style="margin-top:14px;padding:0;overflow:hidden;">
+    <div class="panel-title" style="padding:14px 16px;margin:0;border-bottom:1px solid var(--border);">
+        System modifications audit trail
+        <span style="font-size:11px;color:var(--text-3);font-weight:500;">Newest first</span>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th style="padding:12px 16px;">Timestamp</th>
+                <th style="padding:12px 16px;">Device</th>
+                <th style="padding:12px 16px;">Event</th>
+                <th style="padding:12px 16px;">Action</th>
+                <th style="padding:12px 16px;">Actor</th>
+                <th style="padding:12px 16px;">Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse($events as $event)
+                <tr>
+                    <td style="padding:11px 16px;font-family:monospace;font-size:12px;color:var(--text-2);">
+                        <span data-timestamp="{{ $event->created_at->timestamp }}" data-live-mode="absolute">{{ $event->created_at->format('Y-m-d h:i:s A') }}</span>
+                    </td>
+                    <td style="padding:11px 16px;font-family:monospace;font-size:12px;">{{ $event->device_id ?? '—' }}</td>
+                    <td style="padding:11px 16px;">
+                        <span class="badge {{ $event->event_type === 'automation_change' ? 'badge-warn' : 'badge-blue' }}">
+                            {{ str_replace('_', ' ', $event->event_type) }}
+                        </span>
+                    </td>
+                    <td style="padding:11px 16px;">{{ $event->action }}</td>
+                    <td style="padding:11px 16px;">
+                        {{ $event->actor_name ?? 'System' }}
+                        <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;">{{ $event->actor_type ?? 'system' }}</div>
+                    </td>
+                    <td style="padding:11px 16px;font-family:monospace;font-size:11px;color:var(--text-2);">
+                        @if(is_array($event->meta))
+                            @php
+                                $parts = [];
+                                foreach ($event->meta as $k => $v) {
+                                    if (is_scalar($v) || is_null($v)) {
+                                        $parts[] = $k . '=' . ($v === null ? 'null' : $v);
+                                    }
+                                }
+                            @endphp
+                            {{ implode(' · ', $parts) ?: '—' }}
+                        @else
+                            —
+                        @endif
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">
+                        No system modification events yet.
+                    </td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+</div>
+
 @endsection

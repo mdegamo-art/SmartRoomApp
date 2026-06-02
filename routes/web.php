@@ -25,6 +25,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard',           [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/presence',  [DashboardController::class, 'presence'])->name('dashboard.presence');
+    Route::get('/dashboard/chart-data',[DashboardController::class, 'chartData'])->name('dashboard.chart-data');
+    Route::get('/dashboard/live-data', [DashboardController::class, 'liveData'])->name('dashboard.live-data');
     Route::get('/dashboard/logs',      [DashboardController::class, 'logs'])->name('logs');
     Route::get('/dashboard/actuators', [DashboardController::class, 'actuators'])->name('actuators');
 

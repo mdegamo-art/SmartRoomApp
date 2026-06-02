@@ -257,9 +257,15 @@ php artisan serve --host=0.0.0.0 --port=8000
 ```bash
 cd SmartRoomApp
 npm install --legacy-peer-deps
-# Edit src/utils/api.js → API_BASE = http://<PC-IP>:8000/api
 npx expo start
 ```
+
+After app launch:
+
+1. Login to the mobile app.  
+2. Open **Profile → System**.  
+3. Set **Server URL** to `http://<PC-IP>:8000` or `http://<PC-IP>:8000/api`.  
+4. Tap **Save server URL** (stored locally and reused after restart).
 
 ### Web admin
 
@@ -306,19 +312,20 @@ Use this table when you receive the official rubric. Mark ✅ if demonstrated in
 | Live temperature / humidity / light | Dashboard metrics | Dashboard cards |
 | Device online/offline | Top bar + status card | Dashboard status |
 | Trend chart | Dashboard (1 hour) | — |
-| Actuator toggles | Dashboard + Actuators page | Controls tab |
+| Actuator toggles | Dashboard + Actuators page | Controls tab (in-flight touch lock while request is pending) |
 | Telemetry history | Logs page | History tab |
 | Alerts | Badge on logs | Alerts tab |
 | Register device IDs | Devices page | — |
 | Manage users | Users page | — |
 | Link ESP32 to account | — | Link device screen |
+| Runtime server endpoint config | — | Profile → System (persistent server URL input) |
 | Monitor multiple rooms | Admin dropdown | User sees one room |
 
 ---
 
 ## 12. Known limits (honest for defense)
 
-- Mobile app requires correct `API_BASE` IP on the phone’s network.  
+- Mobile app requires a reachable **Server URL** on the phone’s network (configured in Profile).  
 - ESP32 and Laravel server must be on the same LAN (or reachable IP).  
 - DHT11 accuracy is limited (educational grade).  
 - Admin mobile API does not switch rooms without `device_id` query (web admin is primary for multi-room).  

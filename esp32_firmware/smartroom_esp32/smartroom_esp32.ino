@@ -10,7 +10,7 @@ const char* password = "12345678";
 const char* serverUrl = "http://10.182.231.239:8000/api";
 
 // Device Configuration
-const char* deviceId = "SMARTROOM-003"; // Unique device ID for this ESP32
+const char* deviceId = "SMARTROOM-001"; // Unique device ID for this ESP32
 
 // Sensor Pin Definitions
 #define DHT_PIN 4
