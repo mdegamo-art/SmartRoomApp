@@ -12,16 +12,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // ── Sanctum stateful API (for mobile Bearer token auth) ──
-        $middleware->statefulApi();
+        // ── API auth model ──
+        // The mobile app authenticates with Sanctum personal access tokens
+        // (Bearer header), NOT cookie-based SPA auth. Do NOT enable
+        // statefulApi()/EnsureFrontendRequestsAreStateful here: doing so makes
+        // any /api/* request whose Origin/Referer matches a stateful domain
+        // (e.g. the LAN IP set as APP_URL) run the web session + CSRF
+        // middleware, so token logins fail with "CSRF token mismatch" (419).
+        // Keeping /api/* stateless lets the mobile app log in over the LAN.
 
         // ── CORS — allow React Native app to call the API ──
         $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
-
-        // ── API middleware group ──
-        $middleware->api(prepend: [
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-        ]);
 
         // ── Web middleware (session, csrf, auth) ──
         $middleware->web(append: [
